@@ -52,7 +52,7 @@ public abstract class Edit {
 	    	case LINE:
 	    		return Arrays.asList(DeleteLine.class, CopyLine.class, ReplaceLine.class, SwapLine.class);
 		    case STATEMENT:
-				return Arrays.asList(DeleteStatement.class, CopyStatement.class, ReplaceStatement.class, SwapStatement.class);
+				return Arrays.asList(DeleteStatement.class, CopyStatement.class, ReplaceStatement.class, SwapStatement.class, CacheEdit.class);
 		    case MATCHED_STATEMENT:
 				return Arrays.asList(MatchedDeleteStatement.class, MatchedCopyStatement.class, MatchedReplaceStatement.class, MatchedSwapStatement.class);
 		    case MODIFY_STATEMENT:

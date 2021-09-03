@@ -23,6 +23,7 @@ import com.github.javaparser.symbolsolver.model.resolution.TypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.MemoryTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
+import gin.edit.statement.CacheEdit;
 import org.apache.commons.collections4.multimap.HashSetValuedHashMap;
 import org.pmw.tinylog.Logger;
 
@@ -75,6 +76,7 @@ public class SourceFileTree extends SourceFile {
 
     /**keys are IDs, values are lists of statement IDs in the block*/
     private Map<Integer,List<Integer>> insertionPointsInBlock;
+    public List<CachePoint> cachePoints;
     /** nodes containing each target method */
     private List<Node> targetMethodRootNodes;
 
@@ -99,6 +101,7 @@ public class SourceFileTree extends SourceFile {
         this.compilationUnit = buildCompilationUnitFromSource(new File(filename));
 
         this.populateIDListsFromCompilationUnit();
+        this.updateCachePoint();
     }
 
     public SourceFileTree(File file, String method) {
@@ -129,6 +132,7 @@ public class SourceFileTree extends SourceFile {
         this.compilationUnit = cloneCompilationUnitWithIDs(sf.compilationUnit, nodesToReplace);
         
         this.populateIDListsFromCompilationUnit();
+        this.updateCachePoint();
     }
     
     @Override
@@ -196,6 +200,99 @@ public class SourceFileTree extends SourceFile {
         
         findStatementsAndNodes();
         findBlocks();
+    }
+
+    public void updateCachePoint(){
+        cachePoints = new ArrayList<>();
+        //find all method calls in each method
+        for (Node tnode : this.targetMethodRootNodes){
+            HashMap<String, Integer> counts = new HashMap();
+            HashMap<String,MethodCallExpr> types = new HashMap<>();
+            for (MethodCallExpr node : tnode.findAll(MethodCallExpr.class)){
+                types.put(node.toString(),node);
+                if (counts.containsKey(node.toString())){
+                    Integer curr  = counts.get(node.toString());
+                    counts.put(node.toString(), curr+1);
+                }
+                else{
+                    counts.put(node.toString(), 1);
+                }
+            }
+            for (String count : counts.keySet()){
+                if (counts.get(count)  > 1){
+                    try{
+                        ResolvedType type = types.get(count).resolve().getReturnType();
+                        cachePoints.add(new CachePoint(tnode, count, counts.get(count),type));
+
+                    }
+                    catch (Exception e){
+                        continue;
+                    }
+                }
+            }
+        }
+
+
+//        CombinedTypeSolver typeSolver = new CombinedTypeSolver(new ReflectionTypeSolver());
+//        typeSolver.add(new MemoryTypeSolver());
+//        ParserConfiguration configuration = new ParserConfiguration().setSymbolResolver(new JavaSymbolSolver(typeSolver));
+//        JavaParser parser = new JavaParser(configuration);
+//        CompilationUnit compilationUnit = parser.parse(this.getSource()).getResult().get();
+//        for (Node child : compilationUnit.getChildNodes()){
+//            for (MethodDeclaration methodDec : child.findAll(MethodDeclaration.class)){
+//                cachePoint.put(methodDec, new HashMap<>());
+//                for(MethodCallExpr methodCall : methodDec.findAll(MethodCallExpr.class)){
+//                    String name = methodCall.getTokenRange().toString();
+//                    try {
+//                        methodCall.resolve();
+//                    }
+//                    catch (Exception e){
+//                        continue;
+//                    }
+//                    if(!cachePoint.get(methodDec).containsKey(name)){
+//                        cachePoint.get(methodDec).put(name, new ArrayList<>());
+//
+//                    }
+//                    cachePoint.get(methodDec).get(name).add(methodCall);
+//                }
+//            }
+//        }
+//
+//        //remove individual calls
+//
+//        for(MethodDeclaration dec : cachePoint.keySet()){
+//            ArrayList<String> toRemove = new ArrayList<>();
+//            for (String name: cachePoint.get(dec).keySet()){
+//                if (cachePoint.get(dec).get(name).size() < 2) {
+//                    toRemove.add(name);
+//                }
+//            }
+//            for (String name : toRemove){
+//                cachePoint.get(dec).remove(name);
+//            }
+//        }
+//
+//        //remove methods with no cache point
+//        ArrayList<MethodDeclaration> toRemove = new ArrayList<>();
+//        for(MethodDeclaration dec : cachePoint.keySet()) {
+//            if (cachePoint.get(dec).keySet().size() < 1) {
+//                toRemove.add(dec);
+//            }
+//        }
+//
+//        for (MethodDeclaration dec : toRemove){
+//            cachePoint.remove(dec);
+//        }
+    }
+
+    public ResolvedType getType(MethodCallExpr node){
+        for(CachePoint point : cachePoints){
+            if (point.method.equals(node.toString())){
+                return point.type;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -836,5 +933,21 @@ public class SourceFileTree extends SourceFile {
     	public String toString() {
     		return type + ":" + name;
     	}
+    }
+
+
+    public class CachePoint{
+        public Node targetMethod;
+        public String method;
+        public Integer count;
+        public ResolvedType type;
+
+        public CachePoint(Node targetMethod, String method, Integer count, ResolvedType type){
+            this.targetMethod=targetMethod;
+            this.method=method;
+            this.count=count;
+            this.type=type;
+
+        }
     }
 }
